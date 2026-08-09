@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in — Sales Analytics Dashboard</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="login-body">
+
+  <div class="login-card">
+    <div class="login-brand">
+      <span class="login-mark">SD</span>
+      <div>
+        <h1>Sales Data Analytics</h1>
+        <p>Dashboard sign in</p>
+      </div>
+    </div>
+
+    <div class="alert alert-error" id="error-box" style="display:none;"></div>
+
+    <form id="login-form" class="login-form">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" placeholder="admin" required autofocus>
+
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" placeholder="••••••••" required>
+
+      <button type="submit" class="btn-primary">Sign in</button>
+    </form>
+
+    <p class="login-hint">Demo credentials — username: <strong>admin</strong> &nbsp;|&nbsp; password: <strong>admin123</strong></p>
+  </div>
+
+<script>
+  const form = document.getElementById("login-form");
+  const errorBox = document.getElementById("error-box");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorBox.style.display = "none";
+
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        errorBox.textContent = data.error || "Login failed.";
+        errorBox.style.display = "block";
+        return;
+      }
+
+      window.location.href = "/";
+    } catch (err) {
+      errorBox.textContent = "Could not reach the server. Is it running?";
+      errorBox.style.display = "block";
+    }
+  });
+</script>
+
+</body>
+</html>

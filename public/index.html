@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales Data Analytics Dashboard</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="js/vendor/chart.umd.js"></script>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-mark">SD</span>
+      <div>
+        <strong>Sales Analytics</strong>
+        <span>Dashboard</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="/" class="nav-item active">
+        <span class="nav-dot"></span> Overview
+      </a>
+      <a href="/sales.html" class="nav-item">
+        <span class="nav-dot"></span> Manage Sales
+      </a>
+      <a href="#charts" class="nav-item">
+        <span class="nav-dot"></span> Reports
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="user-avatar" id="user-avatar">U</div>
+        <div>
+          <strong id="user-name">User</strong>
+          <span>Administrator</span>
+        </div>
+      </div>
+      <a href="#" id="logout-link" class="logout-link">Sign out</a>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main">
+
+    <header class="topbar">
+      <div>
+        <h1>Overview</h1>
+        <p class="subtitle">Sales performance across products and regions</p>
+      </div>
+    </header>
+
+    <!-- Filters -->
+    <section class="filter-bar" aria-label="Filters">
+      <div class="filter-field">
+        <label for="f-date-from">From</label>
+        <input type="date" id="f-date-from">
+      </div>
+      <div class="filter-field">
+        <label for="f-date-to">To</label>
+        <input type="date" id="f-date-to">
+      </div>
+      <div class="filter-field">
+        <label for="f-product">Product</label>
+        <select id="f-product">
+          <option value="">All products</option>
+        </select>
+      </div>
+      <div class="filter-field">
+        <label for="f-category">Category</label>
+        <select id="f-category">
+          <option value="">All categories</option>
+        </select>
+      </div>
+      <div class="filter-field">
+        <label for="f-region">Region</label>
+        <select id="f-region">
+          <option value="">All regions</option>
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button id="btn-apply" class="btn-primary">Apply</button>
+        <button id="btn-reset" class="btn-ghost">Reset</button>
+      </div>
+    </section>
+
+    <!-- KPI cards -->
+    <section class="kpi-grid" aria-label="Key metrics">
+      <div class="kpi-card kpi-accent-teal">
+        <span class="kpi-label">Total Revenue</span>
+        <span class="kpi-value" id="kpi-revenue">₹0</span>
+      </div>
+      <div class="kpi-card kpi-accent-amber">
+        <span class="kpi-label">Total Profit</span>
+        <span class="kpi-value" id="kpi-profit">₹0</span>
+      </div>
+      <div class="kpi-card kpi-accent-navy">
+        <span class="kpi-label">Total Orders</span>
+        <span class="kpi-value" id="kpi-orders">0</span>
+      </div>
+      <div class="kpi-card kpi-accent-slate">
+        <span class="kpi-label">Avg Order Value</span>
+        <span class="kpi-value" id="kpi-aov">₹0</span>
+      </div>
+    </section>
+
+    <!-- Charts -->
+    <section class="charts-grid" id="charts">
+      <div class="panel panel-wide">
+        <div class="panel-head">
+          <h2>Revenue &amp; Profit Trend</h2>
+          <span class="panel-note">Monthly</span>
+        </div>
+        <canvas id="chart-trend" height="90"></canvas>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Top Products</h2>
+          <span class="panel-note">By revenue</span>
+        </div>
+        <canvas id="chart-products" height="220"></canvas>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Sales by Region</h2>
+          <span class="panel-note">Share of revenue</span>
+        </div>
+        <canvas id="chart-region" height="220"></canvas>
+      </div>
+    </section>
+
+    <!-- Sales table -->
+    <section class="panel table-panel" id="sales-table">
+      <div class="panel-head">
+        <h2>Sales Records</h2>
+        <span class="panel-note" id="table-count"></span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Product</th>
+              <th>Category</th>
+              <th>Region</th>
+              <th>Qty</th>
+              <th>Unit Price</th>
+              <th>Revenue</th>
+              <th>Profit</th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <tr><td colspan="8" class="table-empty">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </section>
+
+  </main>
+</div>
+
+<script src="js/dashboard.js"></script>
+</body>
+</html>

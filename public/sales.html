@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manage Sales — Sales Data Analytics Dashboard</title>
+<link rel="stylesheet" href="css/style.css">
+<script src="js/vendor/chart.umd.js"></script>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- Sidebar (same as dashboard) -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-mark">SD</span>
+      <div>
+        <strong>Sales Analytics</strong>
+        <span>Dashboard</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="/" class="nav-item">
+        <span class="nav-dot"></span> Overview
+      </a>
+      <a href="/sales.html" class="nav-item active">
+        <span class="nav-dot"></span> Manage Sales
+      </a>
+      <a href="/#charts" class="nav-item">
+        <span class="nav-dot"></span> Reports
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="user-avatar" id="user-avatar">U</div>
+        <div>
+          <strong id="user-name">User</strong>
+          <span>Administrator</span>
+        </div>
+      </div>
+      <a href="#" id="logout-link" class="logout-link">Sign out</a>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main">
+
+    <header class="topbar">
+      <div>
+        <h1>Manage Sales</h1>
+        <p class="subtitle">Add, edit, delete, import and export sales records</p>
+      </div>
+      <div class="topbar-actions">
+        <button id="btn-import" class="btn-ghost">Import CSV</button>
+        <button id="btn-export" class="btn-ghost">Export CSV</button>
+        <button id="btn-add" class="btn-primary">+ Add Sale</button>
+      </div>
+    </header>
+
+    <!-- Toolbar: search + filters -->
+    <section class="filter-bar" aria-label="Search and filters">
+      <div class="filter-field filter-search">
+        <label for="f-search">Search</label>
+        <input type="text" id="f-search" placeholder="Product, category, region, date…">
+      </div>
+      <div class="filter-field">
+        <label for="f-date-from">From</label>
+        <input type="date" id="f-date-from">
+      </div>
+      <div class="filter-field">
+        <label for="f-date-to">To</label>
+        <input type="date" id="f-date-to">
+      </div>
+      <div class="filter-field">
+        <label for="f-product">Product</label>
+        <select id="f-product"><option value="">All products</option></select>
+      </div>
+      <div class="filter-field">
+        <label for="f-category">Category</label>
+        <select id="f-category"><option value="">All categories</option></select>
+      </div>
+      <div class="filter-field">
+        <label for="f-region">Region</label>
+        <select id="f-region"><option value="">All regions</option></select>
+      </div>
+      <div class="filter-actions">
+        <button id="btn-apply" class="btn-primary">Apply</button>
+        <button id="btn-reset" class="btn-ghost">Reset</button>
+        <button id="btn-refresh" class="btn-ghost" title="Refresh">⟳</button>
+      </div>
+    </section>
+
+    <!-- Sales table -->
+    <section class="panel table-panel">
+      <div class="panel-head">
+        <h2>Sales Records</h2>
+        <span class="panel-note" id="table-count"></span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th data-sort="date" class="sortable">Date</th>
+              <th data-sort="product" class="sortable">Product</th>
+              <th data-sort="category" class="sortable">Category</th>
+              <th data-sort="region" class="sortable">Region</th>
+              <th data-sort="quantity" class="sortable num">Qty</th>
+              <th data-sort="unit_price" class="sortable num">Unit Price</th>
+              <th data-sort="revenue" class="sortable num">Revenue</th>
+              <th data-sort="profit" class="sortable num">Profit</th>
+              <th class="actions-col">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <tr><td colspan="9" class="table-empty">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ==================== Add / Edit Sale Modal ==================== -->
+<div class="modal-overlay" id="sale-modal-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="sale-modal-title">Add Sale</h3>
+      <button class="modal-close" data-close="sale-modal-overlay">&times;</button>
+    </div>
+    <form id="sale-form" class="modal-form">
+      <input type="hidden" id="sale-id">
+
+      <div class="form-row">
+        <label for="sale-date">Date</label>
+        <input type="date" id="sale-date" required>
+      </div>
+
+      <div class="form-row">
+        <label for="sale-product">Product</label>
+        <select id="sale-product" required></select>
+      </div>
+
+      <div class="form-row">
+        <label for="sale-region">Region</label>
+        <select id="sale-region" required></select>
+      </div>
+
+      <div class="form-row">
+        <label for="sale-quantity">Quantity</label>
+        <input type="number" id="sale-quantity" min="1" step="1" required>
+      </div>
+
+      <div class="form-row">
+        <label for="sale-unit-price">Unit Price (₹)</label>
+        <input type="number" id="sale-unit-price" min="0.01" step="0.01" required>
+      </div>
+
+      <div class="form-row">
+        <label for="sale-profit">Profit (₹) <span class="field-hint">optional — defaults to 20% of revenue</span></label>
+        <input type="number" id="sale-profit" min="0" step="0.01">
+      </div>
+
+      <div class="form-error" id="sale-form-error" style="display:none;"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" data-close="sale-modal-overlay">Cancel</button>
+        <button type="submit" class="btn-primary" id="sale-form-submit">Save Sale</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ==================== View Sale Modal ==================== -->
+<div class="modal-overlay" id="view-modal-overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Sale Details</h3>
+      <button class="modal-close" data-close="view-modal-overlay">&times;</button>
+    </div>
+    <div class="modal-body" id="view-modal-body">
+      <!-- populated by JS -->
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-primary" data-close="view-modal-overlay">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Delete Confirm Modal ==================== -->
+<div class="modal-overlay" id="delete-modal-overlay">
+  <div class="modal modal-small">
+    <div class="modal-head">
+      <h3>Delete sales record?</h3>
+      <button class="modal-close" data-close="delete-modal-overlay">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>Are you sure you want to delete this sales record? This action cannot be undone.</p>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close="delete-modal-overlay">Cancel</button>
+      <button type="button" class="btn-danger" id="confirm-delete-btn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Import CSV Modal ==================== -->
+<div class="modal-overlay" id="import-modal-overlay">
+  <div class="modal modal-wide">
+    <div class="modal-head">
+      <h3>Import Sales from CSV</h3>
+      <button class="modal-close" data-close="import-modal-overlay">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="import-step-select">
+        <p class="import-hint">
+          CSV columns expected: <code>Date,Product,Category,Region,Quantity,UnitPrice</code>
+          (an optional <code>Profit</code> column is also supported — if omitted, profit defaults to 20% of revenue).
+        </p>
+        <input type="file" id="import-file-input" accept=".csv">
+      </div>
+
+      <div id="import-step-preview" style="display:none;">
+        <p id="import-summary"></p>
+
+        <div id="import-invalid-block" style="display:none;">
+          <h4 class="import-subhead">Rows with errors (will be skipped)</h4>
+          <div class="table-scroll import-table-scroll">
+            <table class="import-table">
+              <thead><tr><th>Row</th><th>Issue</th></tr></thead>
+              <tbody id="import-invalid-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <h4 class="import-subhead">Valid rows ready to import</h4>
+        <div class="table-scroll import-table-scroll">
+          <table class="import-table">
+            <thead><tr><th>Date</th><th>Product</th><th>Category</th><th>Region</th><th>Qty</th><th>Unit Price</th></tr></thead>
+            <tbody id="import-valid-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="form-error" id="import-error" style="display:none;"></div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close="import-modal-overlay">Cancel</button>
+      <button type="button" class="btn-primary" id="import-confirm-btn" style="display:none;">Confirm Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container" class="toast-container"></div>
+
+<script src="js/sales.js"></script>
+</body>
+</html>

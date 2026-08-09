@@ -1,0 +1,5 @@
+node_modules/
+db/sales_dashboard.db-wal
+db/sales_dashboard.db-shm
+.DS_Store
+npm-debug.log*
