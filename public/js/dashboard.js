@@ -9,6 +9,10 @@ const money = (n) =>
   "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
 const els = {
+  dataset: document.getElementById("f-dataset"),
+  datasetMeta: document.getElementById("dataset-meta"),
+  noDatasetState: document.getElementById("no-dataset-state"),
+  dashboardContent: document.getElementById("dashboard-content"),
   dateFrom: document.getElementById("f-date-from"),
   dateTo: document.getElementById("f-date-to"),
   product: document.getElementById("f-product"),
@@ -30,9 +34,22 @@ const els = {
 
 let currentPage = 1;
 let charts = { trend: null, products: null, region: null };
+let datasets = [];
+
+// The selected dataset is remembered in localStorage so the Overview
+// and Manage Sales pages (separate page loads) stay in sync.
+const DATASET_STORAGE_KEY = "salesDashboard.selectedDatasetId";
+function getStoredDatasetId() {
+  return localStorage.getItem(DATASET_STORAGE_KEY) || "";
+}
+function setStoredDatasetId(id) {
+  if (id) localStorage.setItem(DATASET_STORAGE_KEY, id);
+  else localStorage.removeItem(DATASET_STORAGE_KEY);
+}
 
 function currentFilters(extra = {}) {
   const params = new URLSearchParams();
+  if (els.dataset.value) params.set("dataset_id", els.dataset.value);
   if (els.dateFrom.value) params.set("date_from", els.dateFrom.value);
   if (els.dateTo.value) params.set("date_to", els.dateTo.value);
   if (els.product.value) params.set("product_id", els.product.value);
@@ -69,9 +86,69 @@ els.logoutLink.addEventListener("click", async (e) => {
   window.location.href = "/login.html";
 });
 
+// ---------------- Dataset selector ----------------
+async function loadDatasets() {
+  const data = await fetchJSON("/api/datasets");
+  if (!data) return;
+  datasets = data.datasets || [];
+
+  const stored = getStoredDatasetId();
+  const validStoredId = datasets.some((d) => String(d.id) === stored) ? stored : "";
+  const selectedId = validStoredId || (datasets.length ? String(datasets[0].id) : "");
+
+  els.dataset.innerHTML = "";
+  if (!datasets.length) {
+    els.dataset.innerHTML = `<option value="">No datasets uploaded yet</option>`;
+  } else {
+    datasets.forEach((d) => {
+      els.dataset.appendChild(new Option(`${d.name} (${d.row_count} rows)`, d.id));
+    });
+    els.dataset.value = selectedId;
+  }
+
+  setStoredDatasetId(selectedId);
+  updateDatasetMeta();
+  toggleEmptyState();
+}
+
+function updateDatasetMeta() {
+  const selected = datasets.find((d) => String(d.id) === els.dataset.value);
+  if (!selected) {
+    els.datasetMeta.textContent = "";
+    return;
+  }
+  const uploaded = new Date(selected.created_at).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  els.datasetMeta.textContent = `Uploaded ${uploaded} · ${selected.row_count.toLocaleString("en-IN")} records`;
+}
+
+function toggleEmptyState() {
+  const hasDataset = Boolean(els.dataset.value);
+  els.noDatasetState.style.display = hasDataset ? "none" : "block";
+  els.dashboardContent.style.display = hasDataset ? "" : "none";
+}
+
+els.dataset.addEventListener("change", async () => {
+  setStoredDatasetId(els.dataset.value);
+  updateDatasetMeta();
+  toggleEmptyState();
+  if (!els.dataset.value) return;
+  await loadFilterOptions();
+  await refreshAll();
+});
+
 // ---------------- Filter dropdowns ----------------
 async function loadFilterOptions() {
-  const data = await fetchJSON("/api/filter-options");
+  els.product.innerHTML = `<option value="">All products</option>`;
+  els.category.innerHTML = `<option value="">All categories</option>`;
+  els.region.innerHTML = `<option value="">All regions</option>`;
+
+  if (!els.dataset.value) return;
+
+  const data = await fetchJSON(`/api/filter-options?dataset_id=${encodeURIComponent(els.dataset.value)}`);
   if (!data) return;
 
   data.products.forEach((p) => {
@@ -273,6 +350,10 @@ function escapeHtml(str) {
 
 // ---------------- Orchestration ----------------
 async function refreshAll() {
+  if (!els.dataset.value) {
+    toggleEmptyState();
+    return;
+  }
   await Promise.all([loadSummary(), loadTrendChart(), loadProductChart(), loadRegionChart(), loadTable(1)]);
 }
 
@@ -286,19 +367,24 @@ els.reset.addEventListener("click", () => {
   refreshAll();
 });
 
-document.addEventListener("DOMContentLoaded", async () => {
+async function init() {
   await loadSession();
+  await loadDatasets();
   await loadFilterOptions();
   await refreshAll();
-});
+}
+
+document.addEventListener("DOMContentLoaded", init);
 
 // If the browser restores this page from back/forward cache (e.g. after
 // navigating to Manage Sales, importing a CSV, then hitting Back), the
 // DOMContentLoaded handler above does NOT re-run — the page is repainted
 // from a snapshot instead. This listener forces a fresh data pull whenever
-// that happens, so Overview never shows stale KPIs/charts after an import.
+// that happens, so Overview never shows stale KPIs/charts, and always
+// reflects whichever dataset is currently selected, after navigating back.
 window.addEventListener("pageshow", async (event) => {
   if (event.persisted) {
+    await loadDatasets();
     await loadFilterOptions();
     await refreshAll();
   }

@@ -55,6 +55,27 @@
       </div>
     </header>
 
+    <!-- Dataset selector -->
+    <section class="dataset-bar" aria-label="Dataset">
+      <div class="filter-field dataset-field">
+        <label for="f-dataset">Dataset</label>
+        <select id="f-dataset">
+          <option value="">Loading datasets…</option>
+        </select>
+      </div>
+      <span class="dataset-meta" id="dataset-meta"></span>
+      <a href="/sales.html" class="btn-ghost dataset-upload-link">+ Upload dataset</a>
+    </section>
+
+    <!-- Empty state shown when no dataset has been uploaded yet -->
+    <section class="panel empty-state" id="no-dataset-state" style="display:none;">
+      <h2>No dataset selected</h2>
+      <p>Upload a CSV to create your first dataset, then pick it from the selector above.</p>
+      <a href="/sales.html" class="btn-primary">Upload a dataset</a>
+    </section>
+
+    <div id="dashboard-content">
+
     <!-- Filters -->
     <section class="filter-bar" aria-label="Filters">
       <div class="filter-field">
@@ -163,6 +184,8 @@
       </div>
       <div class="pagination" id="pagination"></div>
     </section>
+
+    </div><!-- /dashboard-content -->
 
   </main>
 </div>

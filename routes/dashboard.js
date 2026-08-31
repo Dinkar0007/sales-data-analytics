@@ -154,13 +154,58 @@ router.get("/api/sales-table", (req, res) => {
 });
 
 // ---------------- Filter dropdown options ----------------
+// When dataset_id is supplied, options are scoped to that dataset only:
+// products/regions/categories that don't appear in its sales are left
+// out, so switching datasets never leaves stale filter choices from a
+// different upload in the dropdowns. Without dataset_id, the full
+// shared catalog is returned instead — used by the Add/Edit Sale form,
+// which needs every known product/region available even for a brand
+// new, still-empty dataset.
 router.get("/api/filter-options", (req, res) => {
-  const products = db.prepare("SELECT id, product_name FROM products ORDER BY product_name ASC").all();
-  const regions = db.prepare("SELECT id, region_name FROM regions ORDER BY region_name ASC").all();
+  const datasetId = Number(req.query.dataset_id);
+  const scoped = Number.isInteger(datasetId) && datasetId > 0;
+
+  if (!scoped) {
+    const products = db.prepare("SELECT id, product_name FROM products ORDER BY product_name ASC").all();
+    const regions = db.prepare("SELECT id, region_name FROM regions ORDER BY region_name ASC").all();
+    const categories = db
+      .prepare("SELECT DISTINCT category FROM products ORDER BY category ASC")
+      .all()
+      .map((r) => r.category);
+    return res.json({ products, regions, categories });
+  }
+
+  const products = db
+    .prepare(
+      `SELECT DISTINCT p.id, p.product_name
+       FROM products p
+       JOIN sales s ON s.product_id = p.id
+       WHERE s.dataset_id = ?
+       ORDER BY p.product_name ASC`
+    )
+    .all(datasetId);
+
+  const regions = db
+    .prepare(
+      `SELECT DISTINCT r.id, r.region_name
+       FROM regions r
+       JOIN sales s ON s.region_id = r.id
+       WHERE s.dataset_id = ?
+       ORDER BY r.region_name ASC`
+    )
+    .all(datasetId);
+
   const categories = db
-    .prepare("SELECT DISTINCT category FROM products ORDER BY category ASC")
-    .all()
+    .prepare(
+      `SELECT DISTINCT p.category
+       FROM products p
+       JOIN sales s ON s.product_id = p.id
+       WHERE s.dataset_id = ?
+       ORDER BY p.category ASC`
+    )
+    .all(datasetId)
     .map((r) => r.category);
+
   res.json({ products, regions, categories });
 });
 

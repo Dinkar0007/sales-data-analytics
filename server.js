@@ -16,6 +16,7 @@ const requireAuth = require("./middleware/requireAuth");
 const authRoutes = require("./routes/auth");
 const dashboardRoutes = require("./routes/dashboard");
 const salesRoutes = require("./routes/sales");
+const datasetRoutes = require("./routes/datasets");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,6 +38,7 @@ app.use(authRoutes);
 app.use("/api", requireAuth);
 app.use(dashboardRoutes);
 app.use(salesRoutes);
+app.use(datasetRoutes);
 
 // Multer (CSV upload) errors land here with a clean JSON message instead
 // of a raw stack trace, e.g. file too large or wrong field name.

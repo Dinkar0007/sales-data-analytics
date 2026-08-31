@@ -5,11 +5,25 @@
  * Shared by every API route so filtering behaves consistently
  * everywhere. Assumes the query joins `products p` and `regions r`
  * when `category` or `search` are used (see callers).
+ *
+ * Every query is also always scoped to a single dataset (`dataset_id`).
+ * Uploads never merge with each other, so every read has to be pinned
+ * to exactly one dataset. If no valid dataset_id is supplied, the
+ * filter deliberately matches nothing rather than silently mixing
+ * rows from every dataset together.
  */
 
 function buildFilters(query) {
   const conditions = [];
   const params = {};
+
+  const datasetId = Number(query.dataset_id);
+  if (Number.isInteger(datasetId) && datasetId > 0) {
+    conditions.push("s.dataset_id = @dataset_id");
+    params.dataset_id = datasetId;
+  } else {
+    conditions.push("1 = 0");
+  }
 
   if (query.date_from) {
     conditions.push("s.sale_date >= @date_from");

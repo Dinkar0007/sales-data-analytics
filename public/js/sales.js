@@ -8,6 +8,12 @@
 const money = (n) => "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
 const els = {
+  dataset: document.getElementById("f-dataset"),
+  datasetMeta: document.getElementById("dataset-meta"),
+  noDatasetState: document.getElementById("no-dataset-state"),
+  salesContent: document.getElementById("sales-content"),
+  btnNewDataset: document.getElementById("btn-new-dataset"),
+  btnDeleteDataset: document.getElementById("btn-delete-dataset"),
   search: document.getElementById("f-search"),
   dateFrom: document.getElementById("f-date-from"),
   dateTo: document.getElementById("f-date-to"),
@@ -35,6 +41,19 @@ let state = {
   productOptions: [],
   regionOptions: [],
 };
+
+let datasets = [];
+
+// Shared with dashboard.js via localStorage so both pages agree on
+// which uploaded dataset is currently "active".
+const DATASET_STORAGE_KEY = "salesDashboard.selectedDatasetId";
+function getStoredDatasetId() {
+  return localStorage.getItem(DATASET_STORAGE_KEY) || "";
+}
+function setStoredDatasetId(id) {
+  if (id) localStorage.setItem(DATASET_STORAGE_KEY, id);
+  else localStorage.removeItem(DATASET_STORAGE_KEY);
+}
 
 // ---------------- Toasts ----------------
 function toast(message, type = "success") {
@@ -97,9 +116,148 @@ els.logoutLink.addEventListener("click", async (e) => {
   window.location.href = "/login.html";
 });
 
+// ---------------- Dataset selector ----------------
+async function loadDatasets() {
+  const data = await fetchJSON("/api/datasets");
+  if (!data) return;
+  datasets = data.datasets || [];
+
+  const stored = getStoredDatasetId();
+  const validStoredId = datasets.some((d) => String(d.id) === stored) ? stored : "";
+  const selectedId = validStoredId || (datasets.length ? String(datasets[0].id) : "");
+
+  els.dataset.innerHTML = "";
+  if (!datasets.length) {
+    els.dataset.innerHTML = `<option value="">No datasets uploaded yet</option>`;
+  } else {
+    datasets.forEach((d) => {
+      els.dataset.appendChild(new Option(`${d.name} (${d.row_count} rows)`, d.id));
+    });
+    els.dataset.value = selectedId;
+  }
+
+  setStoredDatasetId(selectedId);
+  updateDatasetMeta();
+  toggleEmptyState();
+}
+
+function updateDatasetMeta() {
+  const selected = datasets.find((d) => String(d.id) === els.dataset.value);
+  if (!selected) {
+    els.datasetMeta.textContent = "";
+    return;
+  }
+  const uploaded = new Date(selected.created_at).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  els.datasetMeta.textContent = `Uploaded ${uploaded} · ${selected.row_count.toLocaleString("en-IN")} records`;
+}
+
+function toggleEmptyState() {
+  const hasDataset = Boolean(els.dataset.value);
+  els.noDatasetState.style.display = hasDataset ? "none" : "block";
+  els.salesContent.style.display = hasDataset ? "" : "none";
+  els.btnAdd.disabled = !hasDataset;
+  els.btnExport.disabled = !hasDataset;
+  els.btnDeleteDataset.style.display = hasDataset ? "inline-flex" : "none";
+}
+
+els.dataset.addEventListener("change", async () => {
+  setStoredDatasetId(els.dataset.value);
+  updateDatasetMeta();
+  toggleEmptyState();
+  if (!els.dataset.value) return;
+  await loadFilterOptions();
+  await loadTable(1);
+});
+
+// ---------------- New dataset ----------------
+els.btnNewDataset.addEventListener("click", () => {
+  document.getElementById("new-dataset-name").value = "";
+  document.getElementById("new-dataset-form-error").style.display = "none";
+  openModal("new-dataset-modal-overlay");
+});
+
+document.getElementById("new-dataset-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const nameInput = document.getElementById("new-dataset-name");
+  const errorEl = document.getElementById("new-dataset-form-error");
+  errorEl.style.display = "none";
+
+  try {
+    const data = await fetchJSON("/api/datasets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: nameInput.value }),
+    });
+    if (!data) return;
+    closeModal("new-dataset-modal-overlay");
+    setStoredDatasetId(String(data.dataset.id));
+    toast(`Dataset "${data.dataset.name}" created.`);
+    await loadDatasets();
+    await loadFilterOptions();
+    await loadTable(1);
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.style.display = "block";
+  }
+});
+
+// ---------------- Delete dataset ----------------
+els.btnDeleteDataset.addEventListener("click", () => {
+  const selected = datasets.find((d) => String(d.id) === els.dataset.value);
+  if (!selected) return;
+  document.getElementById("delete-dataset-name").textContent = selected.name;
+  openModal("delete-dataset-modal-overlay");
+});
+
+document.getElementById("confirm-delete-dataset-btn").addEventListener("click", async () => {
+  const id = els.dataset.value;
+  if (!id) return;
+  try {
+    await fetchJSON(`/api/datasets/${id}`, { method: "DELETE" });
+    toast("Dataset deleted successfully.");
+    closeModal("delete-dataset-modal-overlay");
+    setStoredDatasetId("");
+    await loadDatasets();
+    await loadFilterOptions();
+    await loadTable(1);
+  } catch (err) {
+    toast(err.message, "error");
+  }
+});
+
 // ---------------- Filter dropdowns ----------------
 async function loadFilterOptions() {
-  const data = await fetchJSON("/api/filter-options");
+  els.product.innerHTML = `<option value="">All products</option>`;
+  els.category.innerHTML = `<option value="">All categories</option>`;
+  els.region.innerHTML = `<option value="">All regions</option>`;
+
+  // The Add/Edit Sale form always offers the full shared product/region
+  // catalog (not just what's already in this dataset) — otherwise a
+  // brand-new, still-empty dataset would have nothing to pick from.
+  const productSelect = document.getElementById("sale-product");
+  const regionSelect = document.getElementById("sale-region");
+  productSelect.innerHTML = "";
+  regionSelect.innerHTML = "";
+  const catalog = await fetchJSON("/api/filter-options");
+  if (catalog) {
+    catalog.products.forEach((p) => productSelect.appendChild(new Option(p.product_name, p.id)));
+    catalog.regions.forEach((r) => regionSelect.appendChild(new Option(r.region_name, r.id)));
+  }
+
+  if (!els.dataset.value) {
+    state.productOptions = [];
+    state.regionOptions = [];
+    return;
+  }
+
+  // The toolbar filter dropdowns, on the other hand, only show
+  // products/regions/categories that actually appear in the currently
+  // selected dataset.
+  const data = await fetchJSON(`/api/filter-options?dataset_id=${encodeURIComponent(els.dataset.value)}`);
   if (!data) return;
 
   state.productOptions = data.products;
@@ -114,17 +272,12 @@ async function loadFilterOptions() {
   data.categories.forEach((c) => {
     els.category.appendChild(new Option(c, c));
   });
-
-  // populate the Add/Edit modal's product & region selects too
-  const productSelect = document.getElementById("sale-product");
-  const regionSelect = document.getElementById("sale-region");
-  data.products.forEach((p) => productSelect.appendChild(new Option(p.product_name, p.id)));
-  data.regions.forEach((r) => regionSelect.appendChild(new Option(r.region_name, r.id)));
 }
 
 // ---------------- Query params from current filters ----------------
 function currentFilters(extra = {}) {
   const params = new URLSearchParams();
+  if (els.dataset.value) params.set("dataset_id", els.dataset.value);
   if (els.search.value.trim()) params.set("search", els.search.value.trim());
   if (els.dateFrom.value) params.set("date_from", els.dateFrom.value);
   if (els.dateTo.value) params.set("date_to", els.dateTo.value);
@@ -140,6 +293,14 @@ function currentFilters(extra = {}) {
 // ---------------- Table ----------------
 async function loadTable(page = 1) {
   state.page = page;
+
+  if (!els.dataset.value) {
+    els.tableBody.innerHTML = `<tr><td colspan="9" class="table-empty">Select or upload a dataset to see sales records.</td></tr>`;
+    els.tableCount.textContent = "";
+    els.pagination.innerHTML = "";
+    return;
+  }
+
   els.tableBody.innerHTML = `<tr><td colspan="9" class="table-empty">Loading…</td></tr>`;
 
   let data;
@@ -254,6 +415,10 @@ function resetSaleForm() {
 }
 
 els.btnAdd.addEventListener("click", () => {
+  if (!els.dataset.value) {
+    toast("Select or create a dataset first.", "error");
+    return;
+  }
   resetSaleForm();
   document.getElementById("sale-modal-title").textContent = "Add Sale";
   document.getElementById("sale-form-submit").textContent = "Save Sale";
@@ -286,6 +451,7 @@ saleForm.addEventListener("submit", async (e) => {
 
   const id = document.getElementById("sale-id").value;
   const payload = {
+    dataset_id: els.dataset.value,
     sale_date: document.getElementById("sale-date").value,
     product_id: document.getElementById("sale-product").value,
     region_id: document.getElementById("sale-region").value,
@@ -388,15 +554,19 @@ const importStepSelect = document.getElementById("import-step-select");
 const importStepPreview = document.getElementById("import-step-preview");
 const importError = document.getElementById("import-error");
 const importConfirmBtn = document.getElementById("import-confirm-btn");
+const importDatasetNameInput = document.getElementById("import-dataset-name");
 let pendingImportRows = null;
+let pendingImportFilename = null;
 
 els.btnImport.addEventListener("click", () => {
   importFileInput.value = "";
+  importDatasetNameInput.value = "";
   importStepSelect.style.display = "block";
   importStepPreview.style.display = "none";
   importError.style.display = "none";
   importConfirmBtn.style.display = "none";
   pendingImportRows = null;
+  pendingImportFilename = null;
   openModal(importOverlay);
 });
 
@@ -414,6 +584,13 @@ importFileInput.addEventListener("change", async () => {
     if (!res.ok) throw new Error(data.error || "Could not preview the file.");
 
     pendingImportRows = data.valid_rows;
+    pendingImportFilename = file.name;
+
+    // Suggest a dataset name from the file name — every import always
+    // creates a new dataset, so this never overwrites/merges into an
+    // existing one; the user can rename it before confirming.
+    const suggestedName = file.name.replace(/\.csv$/i, "").trim() || "Imported Sales";
+    importDatasetNameInput.value = suggestedName;
 
     document.getElementById("import-summary").textContent =
       `${data.total_rows} rows found — ${data.valid_count} valid, ${data.invalid_count} invalid.`;
@@ -448,24 +625,44 @@ importFileInput.addEventListener("change", async () => {
 
 importConfirmBtn.addEventListener("click", async () => {
   if (!pendingImportRows || !pendingImportRows.length) return;
+
+  const datasetName = importDatasetNameInput.value.trim();
+  if (!datasetName) {
+    importError.textContent = "Give this dataset a name before importing.";
+    importError.style.display = "block";
+    return;
+  }
+
   try {
     const data = await fetchJSON("/api/sales/import/confirm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rows: pendingImportRows }),
+      body: JSON.stringify({
+        rows: pendingImportRows,
+        dataset_name: datasetName,
+        source_filename: pendingImportFilename,
+      }),
     });
     toast(data.message);
     closeModal(importOverlay);
-    await loadFilterOptions(); // new products/regions may have been created
+
+    // Switch straight to the dataset that was just created — the newly
+    // uploaded data is shown on its own, never merged into whichever
+    // dataset was selected before the import.
+    setStoredDatasetId(String(data.dataset.id));
+    await loadDatasets();
+    await loadFilterOptions();
     loadTable(1);
   } catch (err) {
-    toast(err.message, "error");
+    importError.textContent = err.message;
+    importError.style.display = "block";
   }
 });
 
 // ---------------- Init ----------------
 document.addEventListener("DOMContentLoaded", async () => {
   await loadSession();
+  await loadDatasets();
   await loadFilterOptions();
   await loadTable(1);
 });
@@ -474,6 +671,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 // page is restored from bfcache instead of freshly loaded.
 window.addEventListener("pageshow", async (event) => {
   if (event.persisted) {
+    await loadDatasets();
     await loadFilterOptions();
     await loadTable(1);
   }

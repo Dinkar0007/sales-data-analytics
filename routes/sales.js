@@ -36,6 +36,19 @@ const SORT_COLUMNS = {
 // ---------------------------------------------------------------------
 // Validation helpers
 // ---------------------------------------------------------------------
+// A sale always belongs to exactly one dataset. On create, the client
+// sends the dataset currently selected in the UI; edits keep whatever
+// dataset the row already belonged to (see PUT handler below).
+function validateDatasetId(body) {
+  const datasetId = Number(body.dataset_id);
+  if (!Number.isInteger(datasetId) || datasetId <= 0) {
+    return { error: "Select a dataset before adding a sale." };
+  }
+  const exists = db.prepare("SELECT id FROM datasets WHERE id = ?").get(datasetId);
+  if (!exists) return { error: "Selected dataset does not exist." };
+  return { datasetId };
+}
+
 function validateSalePayload(body, { partial = false } = {}) {
   const errors = [];
   const clean = {};
@@ -239,6 +252,9 @@ router.get("/api/sales/:id", (req, res) => {
 // POST /api/sales — create
 // ---------------------------------------------------------------------
 router.post("/api/sales", (req, res) => {
+  const { error: datasetError, datasetId } = validateDatasetId(req.body || {});
+  if (datasetError) return res.status(400).json({ error: datasetError });
+
   const { errors, clean } = validateSalePayload(req.body || {});
   if (errors.length) return res.status(400).json({ error: errors.join(" ") });
 
@@ -248,10 +264,10 @@ router.post("/api/sales", (req, res) => {
 
     const result = db
       .prepare(
-        `INSERT INTO sales (product_id, region_id, sale_date, quantity, unit_price, revenue, profit)
-         VALUES (@product_id, @region_id, @sale_date, @quantity, @unit_price, @revenue, @profit)`
+        `INSERT INTO sales (dataset_id, product_id, region_id, sale_date, quantity, unit_price, revenue, profit)
+         VALUES (@dataset_id, @product_id, @region_id, @sale_date, @quantity, @unit_price, @revenue, @profit)`
       )
-      .run({ ...clean, revenue, profit });
+      .run({ ...clean, dataset_id: datasetId, revenue, profit });
 
     res.status(201).json({ success: true, id: result.lastInsertRowid, message: "Sale added successfully." });
   } catch (err) {
@@ -280,6 +296,8 @@ router.put("/api/sales/:id", (req, res) => {
   const profit = clean.profit !== undefined ? clean.profit : merged.profit;
 
   try {
+    // dataset_id is intentionally NOT updated here — editing a sale
+    // never moves it into a different dataset.
     db.prepare(
       `UPDATE sales
        SET product_id = @product_id, region_id = @region_id, sale_date = @sale_date,
@@ -391,26 +409,55 @@ router.post("/api/sales/import/preview", upload.single("file"), (req, res) => {
 
 // ---------------------------------------------------------------------
 // CSV IMPORT — step 2: confirm (insert the previously-validated rows)
+//
+// Every confirmed import creates a BRAND-NEW dataset and inserts all
+// rows against it. Nothing is ever appended to a previously uploaded
+// dataset — that's what keeps uploads separate instead of merging
+// into one growing pile of sales.
 // ---------------------------------------------------------------------
+function uniquifyDatasetName(baseName) {
+  const trimmed = (baseName || "").trim() || "Untitled Dataset";
+  const exists = db.prepare("SELECT 1 FROM datasets WHERE name = ?");
+
+  if (!exists.get(trimmed)) return trimmed;
+
+  let n = 2;
+  while (exists.get(`${trimmed} (${n})`)) n++;
+  return `${trimmed} (${n})`;
+}
+
 router.post("/api/sales/import/confirm", (req, res) => {
   const rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
   if (!rows || !rows.length) {
     return res.status(400).json({ error: "No valid rows were provided to import." });
   }
 
+  const requestedName = (req.body?.dataset_name || "").trim();
+  if (!requestedName) {
+    return res.status(400).json({ error: "A name for this dataset is required." });
+  }
+  const sourceFilename = req.body?.source_filename ? String(req.body.source_filename) : null;
+
+  const insertDataset = db.prepare("INSERT INTO datasets (name, source_filename) VALUES (?, ?)");
   const findProduct = db.prepare("SELECT id FROM products WHERE LOWER(product_name) = LOWER(?)");
   const insertProduct = db.prepare("INSERT INTO products (product_name, category, unit_price) VALUES (?, ?, ?)");
   const findRegion = db.prepare("SELECT id FROM regions WHERE LOWER(region_name) = LOWER(?)");
   const insertRegion = db.prepare("INSERT INTO regions (region_name) VALUES (?)");
   const insertSale = db.prepare(
-    `INSERT INTO sales (product_id, region_id, sale_date, quantity, unit_price, revenue, profit)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO sales (dataset_id, product_id, region_id, sale_date, quantity, unit_price, revenue, profit)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   let inserted = 0;
+  let datasetId = null;
+  let datasetName = null;
   const failures = [];
 
   const runImport = db.transaction((rowsToImport) => {
+    datasetName = uniquifyDatasetName(requestedName);
+    const datasetResult = insertDataset.run(datasetName, sourceFilename);
+    datasetId = datasetResult.lastInsertRowid;
+
     for (const r of rowsToImport) {
       try {
         let product = findProduct.get(r.product_name);
@@ -425,7 +472,7 @@ router.post("/api/sales/import/confirm", (req, res) => {
           region = { id: result.lastInsertRowid };
         }
 
-        insertSale.run(product.id, region.id, r.sale_date, r.quantity, r.unit_price, r.revenue, r.profit);
+        insertSale.run(datasetId, product.id, region.id, r.sale_date, r.quantity, r.unit_price, r.revenue, r.profit);
         inserted++;
       } catch (err) {
         failures.push({ row: r.row, error: "Could not insert this row." });
@@ -440,7 +487,8 @@ router.post("/api/sales/import/confirm", (req, res) => {
       inserted,
       failed: failures.length,
       failures,
-      message: `${inserted} record${inserted === 1 ? "" : "s"} imported successfully.`,
+      dataset: { id: datasetId, name: datasetName },
+      message: `${inserted} record${inserted === 1 ? "" : "s"} imported into "${datasetName}".`,
     });
   } catch (err) {
     console.error("POST /api/sales/import/confirm failed:", err);

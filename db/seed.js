@@ -18,6 +18,7 @@ console.log("Building schema...");
 
 db.exec(`
   DROP TABLE IF EXISTS sales;
+  DROP TABLE IF EXISTS datasets;
   DROP TABLE IF EXISTS products;
   DROP TABLE IF EXISTS regions;
   DROP TABLE IF EXISTS users;
@@ -42,8 +43,19 @@ db.exec(`
     region_name TEXT NOT NULL
   );
 
+  -- Every CSV upload (or manually created batch) becomes its own dataset.
+  -- Uploads never merge into an existing dataset's rows; each upload gets
+  -- a fresh row here and its own set of "sales" rows tied to it.
+  CREATE TABLE datasets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    source_filename TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE sales (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dataset_id INTEGER NOT NULL,
     product_id INTEGER NOT NULL,
     region_id INTEGER NOT NULL,
     sale_date TEXT NOT NULL,
@@ -51,11 +63,13 @@ db.exec(`
     unit_price REAL NOT NULL,
     revenue REAL NOT NULL,
     profit REAL NOT NULL,
+    FOREIGN KEY (dataset_id) REFERENCES datasets(id) ON DELETE CASCADE,
     FOREIGN KEY (product_id) REFERENCES products(id),
     FOREIGN KEY (region_id) REFERENCES regions(id)
   );
 
   CREATE INDEX idx_sale_date ON sales(sale_date);
+  CREATE INDEX idx_sale_dataset ON sales(dataset_id);
 `);
 
 // ---------------- Seed admin user ----------------
@@ -93,6 +107,15 @@ console.log(`Inserting ${regions.length} regions...`);
 const insertRegion = db.prepare("INSERT INTO regions (region_name) VALUES (?)");
 regions.forEach((r) => insertRegion.run(r));
 
+// ---------------- Seed the default dataset ----------------
+// The sample data ships as its own dataset, just like any future CSV
+// upload would. Nothing is ever merged into it automatically.
+console.log("Creating default dataset...");
+const defaultDataset = db
+  .prepare("INSERT INTO datasets (name, source_filename) VALUES (?, ?)")
+  .run("Sample Sales Data", null);
+const defaultDatasetId = defaultDataset.lastInsertRowid;
+
 // ---------------- Seed sales (last 12 months) ----------------
 function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -105,8 +128,8 @@ function pad(n) {
 }
 
 const insertSale = db.prepare(`
-  INSERT INTO sales (product_id, region_id, sale_date, quantity, unit_price, revenue, profit)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO sales (dataset_id, product_id, region_id, sale_date, quantity, unit_price, revenue, profit)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const startYear = 2025;
@@ -137,7 +160,7 @@ const insertAllSales = db.transaction(() => {
       const marginPct = randInt(12, 30) / 100;
       const profit = Math.round(revenue * marginPct);
 
-      insertSale.run(productIdx, regionIdx, dateStr, qty, unitPrice, revenue, profit);
+      insertSale.run(defaultDatasetId, productIdx, regionIdx, dateStr, qty, unitPrice, revenue, profit);
       salesCount++;
     }
   }

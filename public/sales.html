@@ -60,6 +60,27 @@
       </div>
     </header>
 
+    <!-- Dataset selector -->
+    <section class="dataset-bar" aria-label="Dataset">
+      <div class="filter-field dataset-field">
+        <label for="f-dataset">Dataset</label>
+        <select id="f-dataset">
+          <option value="">Loading datasets…</option>
+        </select>
+      </div>
+      <span class="dataset-meta" id="dataset-meta"></span>
+      <button id="btn-new-dataset" class="btn-ghost" type="button">+ New Dataset</button>
+      <button id="btn-delete-dataset" class="btn-ghost btn-danger-ghost" type="button" title="Delete this dataset">Delete Dataset</button>
+    </section>
+
+    <!-- Empty state shown when no dataset exists yet -->
+    <section class="panel empty-state" id="no-dataset-state" style="display:none;">
+      <h2>No dataset selected</h2>
+      <p>Import a CSV or create a new dataset to start adding sales records.</p>
+    </section>
+
+    <div id="sales-content">
+
     <!-- Toolbar: search + filters -->
     <section class="filter-bar" aria-label="Search and filters">
       <div class="filter-field filter-search">
@@ -121,6 +142,8 @@
       </div>
       <div class="pagination" id="pagination"></div>
     </section>
+
+    </div><!-- /sales-content -->
 
   </main>
 </div>
@@ -208,6 +231,44 @@
   </div>
 </div>
 
+<!-- ==================== New Dataset Modal ==================== -->
+<div class="modal-overlay" id="new-dataset-modal-overlay">
+  <div class="modal modal-small">
+    <div class="modal-head">
+      <h3>New Dataset</h3>
+      <button class="modal-close" data-close="new-dataset-modal-overlay">&times;</button>
+    </div>
+    <form id="new-dataset-form" class="modal-form">
+      <div class="form-row">
+        <label for="new-dataset-name">Dataset name</label>
+        <input type="text" id="new-dataset-name" placeholder="e.g. Manual Entries" required>
+      </div>
+      <div class="form-error" id="new-dataset-form-error" style="display:none;"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" data-close="new-dataset-modal-overlay">Cancel</button>
+        <button type="submit" class="btn-primary">Create Dataset</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ==================== Delete Dataset Modal ==================== -->
+<div class="modal-overlay" id="delete-dataset-modal-overlay">
+  <div class="modal modal-small">
+    <div class="modal-head">
+      <h3>Delete dataset?</h3>
+      <button class="modal-close" data-close="delete-dataset-modal-overlay">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>This deletes <strong id="delete-dataset-name"></strong> and all of its sales records. This action cannot be undone.</p>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close="delete-dataset-modal-overlay">Cancel</button>
+      <button type="button" class="btn-danger" id="confirm-delete-dataset-btn">Delete Dataset</button>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== Import CSV Modal ==================== -->
 <div class="modal-overlay" id="import-modal-overlay">
   <div class="modal modal-wide">
@@ -220,11 +281,17 @@
         <p class="import-hint">
           CSV columns expected: <code>Date,Product,Category,Region,Quantity,UnitPrice</code>
           (an optional <code>Profit</code> column is also supported — if omitted, profit defaults to 20% of revenue).
+          Each import creates a brand-new, separate dataset — it will never
+          be merged into a dataset you uploaded earlier.
         </p>
         <input type="file" id="import-file-input" accept=".csv">
       </div>
 
       <div id="import-step-preview" style="display:none;">
+        <div class="form-row">
+          <label for="import-dataset-name">New dataset name</label>
+          <input type="text" id="import-dataset-name" placeholder="e.g. Q3 Regional Sales">
+        </div>
         <p id="import-summary"></p>
 
         <div id="import-invalid-block" style="display:none;">

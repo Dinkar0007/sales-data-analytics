@@ -19,5 +19,8 @@ if (!fs.existsSync(DB_PATH)) {
 
 const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
+// Needed so that deleting a dataset also removes its sales rows
+// (ON DELETE CASCADE on sales.dataset_id) instead of orphaning them.
+db.pragma("foreign_keys = ON");
 
 module.exports = db;
