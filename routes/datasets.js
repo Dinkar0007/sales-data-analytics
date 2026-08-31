@@ -31,13 +31,14 @@ router.get("/api/datasets", (req, res) => {
     const rows = db
       .prepare(
         `SELECT
-           d.id, d.name, d.source_filename, d.created_at,
+           d.id, d.name, d.source_filename, d.uploaded_at,
+           d.uploaded_at AS created_at,
            COUNT(s.id) AS row_count,
            COALESCE(SUM(s.revenue), 0) AS total_revenue
          FROM datasets d
          LEFT JOIN sales s ON s.dataset_id = d.id
          GROUP BY d.id
-         ORDER BY d.created_at DESC, d.id DESC`
+         ORDER BY d.uploaded_at DESC, d.id DESC`
       )
       .all();
 
@@ -104,13 +105,21 @@ router.delete("/api/datasets/:id", (req, res) => {
   }
 
   try {
-    const result = db.prepare("DELETE FROM datasets WHERE id = ?").run(id);
-    if (result.changes === 0) return res.status(404).json({ error: "Dataset not found." });
-    // ON DELETE CASCADE (see db/seed.js) removes the dataset's sales rows too.
+    const existing = db.prepare("SELECT id FROM datasets WHERE id = ?").get(id);
+    if (!existing) return res.status(404).json({ error: "Dataset not found." });
+
+    const del = db.transaction((datasetId) => {
+      db.prepare("DELETE FROM sales WHERE dataset_id = ?").run(datasetId);
+      return db.prepare("DELETE FROM datasets WHERE id = ?").run(datasetId);
+    });
+
+    const result = del(id);
+    if (result.changes === 0) return res.status(500).json({ error: "Failed to delete dataset." });
     res.json({ success: true, message: "Dataset deleted successfully." });
   } catch (err) {
     console.error("DELETE /api/datasets/:id failed:", err);
-    res.status(500).json({ error: "Unable to delete dataset." });
+    const message = process.env.NODE_ENV === "production" ? "Unable to delete dataset." : `Unable to delete dataset. ${err.message}`;
+    res.status(500).json({ error: message });
   }
 });
 
