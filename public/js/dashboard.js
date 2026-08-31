@@ -43,7 +43,7 @@ function currentFilters(extra = {}) {
 }
 
 async function fetchJSON(url) {
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: "no-store" });
   if (res.status === 401) {
     window.location.href = "/login.html";
     return null;
@@ -290,4 +290,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadSession();
   await loadFilterOptions();
   await refreshAll();
+});
+
+// If the browser restores this page from back/forward cache (e.g. after
+// navigating to Manage Sales, importing a CSV, then hitting Back), the
+// DOMContentLoaded handler above does NOT re-run — the page is repainted
+// from a snapshot instead. This listener forces a fresh data pull whenever
+// that happens, so Overview never shows stale KPIs/charts after an import.
+window.addEventListener("pageshow", async (event) => {
+  if (event.persisted) {
+    await loadFilterOptions();
+    await refreshAll();
+  }
 });

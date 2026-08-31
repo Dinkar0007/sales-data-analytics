@@ -68,7 +68,7 @@ document.querySelectorAll(".modal-overlay").forEach((overlay) => {
 
 // ---------------- Fetch helper ----------------
 async function fetchJSON(url, options = {}) {
-  const res = await fetch(url, options);
+  const res = await fetch(url, { cache: "no-store", ...options });
   if (res.status === 401) {
     window.location.href = "/login.html";
     return null;
@@ -468,4 +468,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadSession();
   await loadFilterOptions();
   await loadTable(1);
+});
+
+// Same back/forward-cache fix as dashboard.js — force a re-fetch if this
+// page is restored from bfcache instead of freshly loaded.
+window.addEventListener("pageshow", async (event) => {
+  if (event.persisted) {
+    await loadFilterOptions();
+    await loadTable(1);
+  }
 });
