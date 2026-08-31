@@ -38,10 +38,17 @@ function ensureDatasetSchema() {
     CREATE TABLE IF NOT EXISTS datasets (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
+      source_filename TEXT,
       uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
       row_count INTEGER NOT NULL DEFAULT 0
     );
   `);
+
+  const datasetColumns = db.prepare("PRAGMA table_info(datasets)").all();
+  const hasSourceFilename = datasetColumns.some((c) => c.name === "source_filename");
+  if (!hasSourceFilename) {
+    db.exec("ALTER TABLE datasets ADD COLUMN source_filename TEXT");
+  }
 
   const salesColumns = db.prepare("PRAGMA table_info(sales)").all();
   const hasDatasetId = salesColumns.some((c) => c.name === "dataset_id");

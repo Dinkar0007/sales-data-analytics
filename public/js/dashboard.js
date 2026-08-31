@@ -117,7 +117,7 @@ function updateDatasetMeta() {
     els.datasetMeta.textContent = "";
     return;
   }
-  const uploaded = new Date(selected.created_at).toLocaleDateString("en-IN", {
+  const uploaded = new Date(selected.uploaded_at || selected.created_at).toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",

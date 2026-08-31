@@ -20,7 +20,6 @@ const els = {
   product: document.getElementById("f-product"),
   category: document.getElementById("f-category"),
   region: document.getElementById("f-region"),
-  dataset: document.getElementById("f-dataset"),
   apply: document.getElementById("btn-apply"),
   reset: document.getElementById("btn-reset"),
   refresh: document.getElementById("btn-refresh"),
@@ -119,7 +118,7 @@ els.logoutLink.addEventListener("click", async (e) => {
 });
 
 // ---------------- Dataset selector ----------------
-async function loadDatasets() {
+async function loadDatasetSelector() {
   const data = await fetchJSON("/api/datasets");
   if (!data) return;
   datasets = data.datasets || [];
@@ -149,7 +148,7 @@ function updateDatasetMeta() {
     els.datasetMeta.textContent = "";
     return;
   }
-  const uploaded = new Date(selected.created_at).toLocaleDateString("en-IN", {
+  const uploaded = new Date(selected.uploaded_at || selected.created_at).toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -158,12 +157,18 @@ function updateDatasetMeta() {
 }
 
 function toggleEmptyState() {
+  // The special "unassigned" pseudo-dataset (manually added sales)
+  // is not a real dataset row and therefore cannot be deleted.
   const hasDataset = Boolean(els.dataset.value);
+  const isUnassigned = els.dataset.value === "unassigned";
+  const canActOnDataset = hasDataset && !isUnassigned;
+
   els.noDatasetState.style.display = hasDataset ? "none" : "block";
   els.salesContent.style.display = hasDataset ? "" : "none";
   els.btnAdd.disabled = !hasDataset;
   els.btnExport.disabled = !hasDataset;
-  els.btnDeleteDataset.style.display = hasDataset ? "inline-flex" : "none";
+  // Only show the Delete button for real datasets (not the "unassigned" bucket)
+  els.btnDeleteDataset.style.display = canActOnDataset ? "inline-flex" : "none";
 }
 
 els.dataset.addEventListener("change", async () => {
@@ -198,8 +203,9 @@ document.getElementById("new-dataset-form").addEventListener("submit", async (e)
     closeModal("new-dataset-modal-overlay");
     setStoredDatasetId(String(data.dataset.id));
     toast(`Dataset "${data.dataset.name}" created.`);
-    await loadDatasets();
+    await loadDatasetSelector();
     await loadFilterOptions();
+    await loadDatasetsTable();
     await loadTable(1);
   } catch (err) {
     errorEl.textContent = err.message;
@@ -223,8 +229,9 @@ document.getElementById("confirm-delete-dataset-btn").addEventListener("click", 
     toast("Dataset deleted successfully.");
     closeModal("delete-dataset-modal-overlay");
     setStoredDatasetId("");
-    await loadDatasets();
+    await loadDatasetSelector();
     await loadFilterOptions();
+    await loadDatasetsTable();
     await loadTable(1);
   } catch (err) {
     toast(err.message, "error");
@@ -287,7 +294,7 @@ function formatDateTime(d) {
   return dt.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-async function loadDatasets() {
+async function loadDatasetsTable() {
   let data;
   try {
     data = await fetchJSON("/api/sales/datasets");
@@ -709,8 +716,9 @@ importConfirmBtn.addEventListener("click", async () => {
     closeModal(importOverlay);
 
     setStoredDatasetId(String(data.dataset.id));
-    await loadDatasets();
+    await loadDatasetSelector();
     await loadFilterOptions();
+    await loadDatasetsTable();
     loadTable(1);
   } catch (err) {
     importError.textContent = err.message;
@@ -721,9 +729,9 @@ importConfirmBtn.addEventListener("click", async () => {
 // ---------------- Init ----------------
 document.addEventListener("DOMContentLoaded", async () => {
   await loadSession();
-  await loadDatasets();
+  await loadDatasetSelector();
   await loadFilterOptions();
-  await loadDatasets();
+  await loadDatasetsTable();
   await loadTable(1);
 });
 
@@ -731,9 +739,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 // page is restored from bfcache instead of freshly loaded.
 window.addEventListener("pageshow", async (event) => {
   if (event.persisted) {
-    await loadDatasets();
+    await loadDatasetSelector();
     await loadFilterOptions();
-    await loadDatasets();
+    await loadDatasetsTable();
     await loadTable(1);
   }
 });

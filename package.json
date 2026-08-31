@@ -4,8 +4,11 @@
   "description": "Sales Data Analytics Dashboard - Node.js + Express + SQLite version",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "seed": "node db/seed.js"
+    "start": "npx --yes -p node@20 node server.js",
+    "seed": "npx --yes -p node@20 node db/seed.js"
+  },
+  "engines": {
+    "node": ">=20 <21"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
