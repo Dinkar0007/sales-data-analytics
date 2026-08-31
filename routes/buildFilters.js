@@ -41,6 +41,15 @@ function buildFilters(query) {
     conditions.push("s.region_id = @region_id");
     params.region_id = Number(query.region_id);
   }
+  // Dataset filter — lets the UI show a single uploaded dataset in
+  // isolation instead of every dataset merged together. "unassigned"
+  // is a sentinel for legacy rows/manual entries with no dataset_id.
+  if (query.dataset_id === "unassigned") {
+    conditions.push("s.dataset_id IS NULL");
+  } else if (query.dataset_id) {
+    conditions.push("s.dataset_id = @dataset_id");
+    params.dataset_id = Number(query.dataset_id);
+  }
   if (query.category) {
     conditions.push("p.category = @category");
     params.category = query.category;

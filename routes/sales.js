@@ -154,10 +154,12 @@ router.get("/api/sales", (req, res) => {
       .prepare(
         `SELECT
            s.id, s.sale_date, s.product_id, p.product_name, p.category,
-           s.region_id, r.region_name, s.quantity, s.unit_price, s.revenue, s.profit
+           s.region_id, r.region_name, s.quantity, s.unit_price, s.revenue, s.profit,
+           s.dataset_id, d.name AS dataset_name
          FROM sales s
          JOIN products p ON p.id = s.product_id
          JOIN regions r ON r.id = s.region_id
+         LEFT JOIN datasets d ON d.id = s.dataset_id
          ${where}
          ORDER BY ${sortCol} ${sortDir}, s.id DESC
          LIMIT @limit OFFSET @offset`
@@ -220,6 +222,34 @@ router.get("/api/sales/export", (req, res) => {
   } catch (err) {
     console.error("GET /api/sales/export failed:", err);
     res.status(500).json({ error: "Unable to export data." });
+  }
+});
+
+// ---------------------------------------------------------------------
+// GET /api/sales/datasets — list every uploaded dataset (plus the
+// original sample data) so the UI can show each upload as its own
+// separate entry instead of one merged pool of records.
+// IMPORTANT: must be registered BEFORE GET /api/sales/:id, same reason
+// as /api/sales/export above.
+// ---------------------------------------------------------------------
+router.get("/api/sales/datasets", (req, res) => {
+  try {
+    const datasets = db
+      .prepare(
+        `SELECT d.id, d.name, d.uploaded_at, COUNT(s.id) AS row_count
+         FROM datasets d
+         LEFT JOIN sales s ON s.dataset_id = d.id
+         GROUP BY d.id
+         ORDER BY d.uploaded_at DESC, d.id DESC`
+      )
+      .all();
+
+    const unassigned = db.prepare("SELECT COUNT(*) AS n FROM sales WHERE dataset_id IS NULL").get().n;
+
+    res.json({ datasets, unassigned_count: unassigned });
+  } catch (err) {
+    console.error("GET /api/sales/datasets failed:", err);
+    res.status(500).json({ error: "Could not load datasets." });
   }
 });
 
@@ -438,11 +468,11 @@ router.post("/api/sales/import/confirm", (req, res) => {
   }
   const sourceFilename = req.body?.source_filename ? String(req.body.source_filename) : null;
 
-  const insertDataset = db.prepare("INSERT INTO datasets (name, source_filename) VALUES (?, ?)");
   const findProduct = db.prepare("SELECT id FROM products WHERE LOWER(product_name) = LOWER(?)");
   const insertProduct = db.prepare("INSERT INTO products (product_name, category, unit_price) VALUES (?, ?, ?)");
   const findRegion = db.prepare("SELECT id FROM regions WHERE LOWER(region_name) = LOWER(?)");
   const insertRegion = db.prepare("INSERT INTO regions (region_name) VALUES (?)");
+  const insertDataset = db.prepare("INSERT INTO datasets (name, source_filename, row_count) VALUES (?, ?, ?)");
   const insertSale = db.prepare(
     `INSERT INTO sales (dataset_id, product_id, region_id, sale_date, quantity, unit_price, revenue, profit)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
@@ -455,7 +485,7 @@ router.post("/api/sales/import/confirm", (req, res) => {
 
   const runImport = db.transaction((rowsToImport) => {
     datasetName = uniquifyDatasetName(requestedName);
-    const datasetResult = insertDataset.run(datasetName, sourceFilename);
+    const datasetResult = insertDataset.run(datasetName, sourceFilename, 0);
     datasetId = datasetResult.lastInsertRowid;
 
     for (const r of rowsToImport) {
@@ -478,6 +508,8 @@ router.post("/api/sales/import/confirm", (req, res) => {
         failures.push({ row: r.row, error: "Could not insert this row." });
       }
     }
+
+    db.prepare("UPDATE datasets SET row_count = ? WHERE id = ?").run(inserted, datasetId);
   });
 
   try {

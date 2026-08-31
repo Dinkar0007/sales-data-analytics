@@ -20,10 +20,12 @@ const els = {
   product: document.getElementById("f-product"),
   category: document.getElementById("f-category"),
   region: document.getElementById("f-region"),
+  dataset: document.getElementById("f-dataset"),
   apply: document.getElementById("btn-apply"),
   reset: document.getElementById("btn-reset"),
   refresh: document.getElementById("btn-refresh"),
   tableBody: document.getElementById("table-body"),
+  datasetBody: document.getElementById("dataset-body"),
   tableCount: document.getElementById("table-count"),
   pagination: document.getElementById("pagination"),
   userName: document.getElementById("user-name"),
@@ -274,6 +276,66 @@ async function loadFilterOptions() {
   });
 }
 
+// ---------------- Datasets ----------------
+// Every CSV import is stored as its own dataset (never merged with an
+// earlier upload). This renders the list of datasets and keeps the
+// "Dataset" filter dropdown in sync with it.
+function formatDateTime(d) {
+  if (!d) return "—";
+  const dt = new Date(d.replace(" ", "T") + "Z");
+  if (Number.isNaN(dt.getTime())) return d;
+  return dt.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+async function loadDatasets() {
+  let data;
+  try {
+    data = await fetchJSON("/api/sales/datasets");
+  } catch (err) {
+    els.datasetBody.innerHTML = `<tr><td colspan="4" class="table-empty">Could not load datasets.</td></tr>`;
+    return;
+  }
+  if (!data) return;
+
+  const rows = [...data.datasets];
+  if (data.unassigned_count > 0) {
+    rows.push({ id: "unassigned", name: "Manually Added Sales", uploaded_at: null, row_count: data.unassigned_count });
+  }
+
+  if (!rows.length) {
+    els.datasetBody.innerHTML = `<tr><td colspan="4" class="table-empty">No datasets yet — import a CSV to get started.</td></tr>`;
+  } else {
+    els.datasetBody.innerHTML = rows
+      .map(
+        (d) => `
+        <tr>
+          <td>${escapeHtml(d.name)}</td>
+          <td>${formatDateTime(d.uploaded_at)}</td>
+          <td class="num">${d.row_count.toLocaleString("en-IN")}</td>
+          <td class="actions-col">
+            <button class="row-action" data-dataset-id="${d.id}" title="View this dataset only">👁</button>
+          </td>
+        </tr>`
+      )
+      .join("");
+  }
+
+  // Keep the filter dropdown's options in sync, preserving the current selection.
+  const selected = els.dataset.value;
+  els.dataset.innerHTML = `<option value="">All datasets</option>`;
+  rows.forEach((d) => els.dataset.appendChild(new Option(`${d.name} (${d.row_count})`, d.id)));
+  els.dataset.value = selected;
+}
+
+els.datasetBody.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-dataset-id]");
+  if (!btn) return;
+  els.dataset.value = btn.dataset.datasetId;
+  loadTable(1);
+});
+
+els.dataset.addEventListener("change", () => loadTable(1));
+
 // ---------------- Query params from current filters ----------------
 function currentFilters(extra = {}) {
   const params = new URLSearchParams();
@@ -284,6 +346,7 @@ function currentFilters(extra = {}) {
   if (els.product.value) params.set("product_id", els.product.value);
   if (els.category.value) params.set("category", els.category.value);
   if (els.region.value) params.set("region_id", els.region.value);
+  if (els.dataset.value) params.set("dataset_id", els.dataset.value);
   params.set("sort_by", state.sortBy);
   params.set("sort_dir", state.sortDir);
   Object.entries(extra).forEach(([k, v]) => params.set(k, v));
@@ -307,13 +370,13 @@ async function loadTable(page = 1) {
   try {
     data = await fetchJSON(`/api/sales?${currentFilters({ page })}`);
   } catch (err) {
-    els.tableBody.innerHTML = `<tr><td colspan="9" class="table-empty">Could not load records.</td></tr>`;
+    els.tableBody.innerHTML = `<tr><td colspan="10" class="table-empty">Could not load records.</td></tr>`;
     return;
   }
   if (!data) return;
 
   if (!data.rows.length) {
-    els.tableBody.innerHTML = `<tr><td colspan="9" class="table-empty">No sales records match the selected filters.</td></tr>`;
+    els.tableBody.innerHTML = `<tr><td colspan="10" class="table-empty">No sales records match the selected filters.</td></tr>`;
   } else {
     els.tableBody.innerHTML = data.rows
       .map(
@@ -327,6 +390,7 @@ async function loadTable(page = 1) {
           <td class="num">${money(r.unit_price)}</td>
           <td class="num">${money(r.revenue)}</td>
           <td class="num">${money(r.profit)}</td>
+          <td><span class="category-pill">${escapeHtml(r.dataset_name || "Manually Added")}</span></td>
           <td class="actions-col">
             <button class="row-action" data-action="view" data-id="${r.id}" title="View">👁</button>
             <button class="row-action" data-action="edit" data-id="${r.id}" title="Edit">✎</button>
@@ -400,6 +464,7 @@ els.reset.addEventListener("click", () => {
   els.product.value = "";
   els.category.value = "";
   els.region.value = "";
+  els.dataset.value = "";
   loadTable(1);
 });
 
@@ -586,9 +651,6 @@ importFileInput.addEventListener("change", async () => {
     pendingImportRows = data.valid_rows;
     pendingImportFilename = file.name;
 
-    // Suggest a dataset name from the file name — every import always
-    // creates a new dataset, so this never overwrites/merges into an
-    // existing one; the user can rename it before confirming.
     const suggestedName = file.name.replace(/\.csv$/i, "").trim() || "Imported Sales";
     importDatasetNameInput.value = suggestedName;
 
@@ -646,9 +708,6 @@ importConfirmBtn.addEventListener("click", async () => {
     toast(data.message);
     closeModal(importOverlay);
 
-    // Switch straight to the dataset that was just created — the newly
-    // uploaded data is shown on its own, never merged into whichever
-    // dataset was selected before the import.
     setStoredDatasetId(String(data.dataset.id));
     await loadDatasets();
     await loadFilterOptions();
@@ -664,6 +723,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadSession();
   await loadDatasets();
   await loadFilterOptions();
+  await loadDatasets();
   await loadTable(1);
 });
 
@@ -673,6 +733,7 @@ window.addEventListener("pageshow", async (event) => {
   if (event.persisted) {
     await loadDatasets();
     await loadFilterOptions();
+    await loadDatasets();
     await loadTable(1);
   }
 });

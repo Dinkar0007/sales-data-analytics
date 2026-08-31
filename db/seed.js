@@ -22,6 +22,7 @@ db.exec(`
   DROP TABLE IF EXISTS products;
   DROP TABLE IF EXISTS regions;
   DROP TABLE IF EXISTS users;
+  DROP TABLE IF EXISTS datasets;
 
   CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,12 +51,13 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     source_filename TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    row_count INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE sales (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    dataset_id INTEGER NOT NULL,
+    dataset_id INTEGER,
     product_id INTEGER NOT NULL,
     region_id INTEGER NOT NULL,
     sale_date TEXT NOT NULL,
@@ -71,6 +73,9 @@ db.exec(`
   CREATE INDEX idx_sale_date ON sales(sale_date);
   CREATE INDEX idx_sale_dataset ON sales(dataset_id);
 `);
+
+const insertDataset = db.prepare("INSERT INTO datasets (name, row_count) VALUES (?, ?)");
+const sampleDatasetId = insertDataset.run("Original Data", 0).lastInsertRowid;
 
 // ---------------- Seed admin user ----------------
 console.log("Creating admin user...");
@@ -112,8 +117,8 @@ regions.forEach((r) => insertRegion.run(r));
 // upload would. Nothing is ever merged into it automatically.
 console.log("Creating default dataset...");
 const defaultDataset = db
-  .prepare("INSERT INTO datasets (name, source_filename) VALUES (?, ?)")
-  .run("Sample Sales Data", null);
+  .prepare("INSERT INTO datasets (name, source_filename, row_count) VALUES (?, ?, ?)")
+  .run("Sample Sales Data", null, 0);
 const defaultDatasetId = defaultDataset.lastInsertRowid;
 
 // ---------------- Seed sales (last 12 months) ----------------
@@ -168,6 +173,7 @@ const insertAllSales = db.transaction(() => {
 
 console.log("Generating sample sales records...");
 insertAllSales();
+db.prepare("UPDATE datasets SET row_count = ? WHERE id = ?").run(salesCount, sampleDatasetId);
 console.log(`Inserted ${salesCount} sales records.`);
 
 db.close();
